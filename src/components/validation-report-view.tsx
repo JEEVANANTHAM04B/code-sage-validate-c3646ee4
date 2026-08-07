@@ -1,5 +1,13 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  FileDown,
+  FileText,
+  XCircle,
+
   BadgeCheck,
   BookOpen,
   Boxes,
@@ -15,9 +23,11 @@ import {
 
 import { CodeBlock } from "@/components/code-block";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { exportReportDocx, exportReportPdf, type ReportExportMeta } from "@/lib/export-report";
 import { cn } from "@/lib/utils";
 import type { CodeIssue, Language, ValidationReport } from "@/lib/validation-types";
 
@@ -82,16 +92,70 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
+function StatusTile({
+  label,
+  value,
+  ok,
+  hint,
+}: {
+  label: string;
+  value: string;
+  ok: boolean;
+  hint?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-4",
+        ok ? "border-success/40 bg-success/10" : "border-destructive/40 bg-destructive/10",
+      )}
+    >
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "mt-1.5 flex items-center gap-1.5 text-lg font-semibold",
+          ok ? "text-success" : "text-destructive",
+        )}
+      >
+        {ok ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+        {value}
+      </p>
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 export function ValidationReportView({
   report,
   language,
   submittedCode,
+  meta,
 }: {
   report: ValidationReport;
   language: Language;
   submittedCode?: string;
+  meta?: ReportExportMeta;
 }) {
   const accepted = report.verdict === "accepted";
+  const executionOk = (report.executionStatus ?? (report.execution.error ? "error" : "success")) === "success";
+  const matched = report.outputMatch?.matched ?? accepted;
+  const expectedOutput = report.outputMatch?.expected ?? null;
+  const actualOutput = report.outputMatch?.actual || report.execution.output || "(no output)";
+  const matchReason = report.outputMatch?.reason ?? "";
+  const [exporting, setExporting] = useState<"pdf" | "docx" | null>(null);
+
+  const runExport = async (kind: "pdf" | "docx") => {
+    if (!meta) return;
+    setExporting(kind);
+    try {
+      if (kind === "pdf") await exportReportPdf(report, meta);
+      else await exportReportDocx(report, meta);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -134,15 +198,79 @@ export function ValidationReportView({
             </div>
           </div>
 
-          <div className="flex flex-col items-center rounded-2xl border border-border bg-secondary/40 px-7 py-4">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">AI Score</span>
-            <span className={cn("text-4xl font-bold tabular-nums", toneClass(report.scores.overall))}>
-              {report.scores.overall}
-            </span>
-            <span className="text-xs text-muted-foreground">out of 100</span>
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex flex-col items-center rounded-2xl border border-border bg-secondary/40 px-7 py-4">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">AI Score</span>
+              <span className={cn("text-4xl font-bold tabular-nums", toneClass(report.scores.overall))}>
+                {report.scores.overall}
+              </span>
+              <span className="text-xs text-muted-foreground">informational</span>
+            </div>
+            {meta && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={exporting !== null}
+                  onClick={() => void runExport("pdf")}
+                >
+                  <FileDown className="size-3.5" /> PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={exporting !== null}
+                  onClick={() => void runExport("docx")}
+                >
+                  <FileText className="size-3.5" /> DOCX
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ClipboardCheck className="size-4" /> Validation result
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatusTile
+              label="Execution status"
+              value={executionOk ? "Success" : "Error"}
+              ok={executionOk}
+              hint={executionOk ? "Code ran without errors" : "Code failed to run"}
+            />
+            <StatusTile
+              label="Output match"
+              value={matched ? "Exact match" : "No match"}
+              ok={matched}
+              hint={matchReason}
+            />
+            <StatusTile
+              label="Validation status"
+              value={accepted ? "Accepted" : "Rejected"}
+              ok={accepted}
+              hint="Requires successful execution + exact output match"
+            />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CodeBlock code={expectedOutput ?? "(not provided)"} label="expected output" />
+            <CodeBlock code={actualOutput} label="actual output" />
+          </div>
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            AI scores, complexity, difficulty and suggestions below are informational guidance only and
+            never affect acceptance.
+          </p>
+        </CardContent>
+      </Card>
+
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard

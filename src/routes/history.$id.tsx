@@ -96,6 +96,15 @@ function SubmissionDetailPage() {
             report={data.report}
             language={data.language}
             submittedCode={data.code}
+            meta={{
+              employeeName: data.employee_name,
+              employeeCode: data.employee_code,
+              department: data.department,
+              question: data.question,
+              language: data.language,
+              submittedAt: data.created_at,
+              code: data.code,
+            }}
           />
         </>
       )}

@@ -14,7 +14,7 @@ Do all of the following:
 2. Statically analyse the code: syntax validity, indentation, naming conventions, unused variables, missing conditions, off-by-one errors, missing edge-case handling, bad practices, security issues (eval/exec/os.system/injection/SELECT *), formatting (PEP8 for Python).
 3. Trace the code execution precisely, as an interpreter would (Python) or as SQLite would (SQL). Report the exact stdout the code would produce, or the exact traceback/error message if it fails. If the code needs sample input or a table that is not provided, invent a small reasonable sample and state it in execution.note. Estimate runtime in milliseconds and memory in KB for that sample. This is deterministic reasoning, not real execution.
 4. Compare the produced output with the expected output when provided; otherwise judge correctness against the question requirements.
-5. Score every dimension 0-100 honestly. A submission that does not solve the asked question must score low on logic and be rejected. Set verdict "accepted" only when the code is correct, runs without errors and satisfies the question.
+5. Score every dimension 0-100 honestly. A submission that does not solve the asked question must score low on logic and be rejected. Set verdict "accepted" only when the code is correct, runs without errors and satisfies the question. Note: this verdict is advisory only — the platform decides final acceptance itself from execution success and an exact expected-output match, so report execution.output with byte-accurate precision.
 6. Derive time and space complexity with a short justification.
 7. Estimate difficulty (Easy | Medium | Hard | Expert) with a 0-100 difficulty score and concrete reasons.
 8. Produce six full rewritten solutions (cleaner, optimized, beginner, intermediate, advanced, production) in the SAME language as the submission. Each must be complete, runnable code with no placeholder comments.
@@ -115,8 +115,13 @@ function normalize(raw: unknown): ValidationReport {
     return Number.isFinite(n) && n >= 0 ? Math.round(n) : fallback;
   };
 
+  const aiVerdict = root['verdict'] === "accepted" ? "accepted" : "rejected";
+
   return {
-    verdict: root['verdict'] === "accepted" ? "accepted" : "rejected",
+    verdict: aiVerdict,
+    aiVerdict,
+    executionStatus: "error",
+    outputMatch: { matched: false, expected: null, actual: "", reason: "" },
     summary: str(root['summary'], "No summary returned."),
     problemType: list(root['problemType']).slice(0, 8),
     questionUnderstanding: str(root['questionUnderstanding']),
@@ -198,5 +203,52 @@ export async function runValidationEngine(input: ValidationInput): Promise<Valid
   const text = await result.text;
   if (!text.trim()) throw new Error("The AI reviewer returned an empty response. Please retry.");
 
-  return normalize(extractJson(text));
+  return applyAcceptanceRules(normalize(extractJson(text)), input);
+}
+
+/** Canonical form for exact-output comparison: normalized newlines, no trailing spaces, trimmed. */
+function canonicalOutput(value: string) {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .join("\n")
+    .trim();
+}
+
+/**
+ * Acceptance is decided ONLY by:
+ * 1. the code executing without an error, and
+ * 2. the produced output matching the expected output exactly.
+ * All AI scores/insights stay informational.
+ */
+function applyAcceptanceRules(report: ValidationReport, input: ValidationInput): ValidationReport {
+  const executionStatus = report.execution.error ? "error" : "success";
+  const expectedRaw = input.expectedOutput?.trim() ? input.expectedOutput : null;
+  const actual = report.execution.output ?? "";
+
+  let matched = false;
+  let reason: string;
+
+  if (executionStatus === "error") {
+    reason = "Code failed to execute, so the output could not be compared.";
+  } else if (!expectedRaw) {
+    matched = false;
+    reason = "No expected output was provided, so an exact match could not be verified.";
+  } else {
+    matched = canonicalOutput(actual) === canonicalOutput(expectedRaw);
+    reason = matched
+      ? "Actual output matches the expected output exactly."
+      : "Actual output differs from the expected output.";
+  }
+
+  const verdict = executionStatus === "success" && matched ? "accepted" : "rejected";
+
+  return {
+    ...report,
+    verdict,
+    executionStatus,
+    outputMatch: { matched, expected: expectedRaw, actual, reason },
+    scores: { ...report.scores, outputMatch: matched ? 100 : 0 },
+  };
 }

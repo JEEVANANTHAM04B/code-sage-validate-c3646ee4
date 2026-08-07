@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { FileSpreadsheet, FileDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -16,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchSubmissions } from "@/lib/submissions";
+import { exportHistoryCsv, exportHistoryExcel } from "@/lib/export-history";
 
 export const Route = createFileRoute("/history/")({
   head: () => ({
@@ -101,6 +103,22 @@ function HistoryPage() {
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              className="gap-1.5"
+              disabled={rows.length === 0}
+              onClick={() => exportHistoryCsv(rows)}
+            >
+              <FileDown className="size-4" /> CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5"
+              disabled={rows.length === 0}
+              onClick={() => void exportHistoryExcel(rows)}
+            >
+              <FileSpreadsheet className="size-4" /> Excel
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -132,6 +150,31 @@ function HistoryPage() {
                     </Badge>
                     <Badge variant="outline">{row.difficulty}</Badge>
                     <Badge
+                      variant="outline"
+                      className={
+                        (row.execution_status ?? (row.execution_error ? "error" : "success")) ===
+                        "success"
+                          ? "border-success/40 text-success"
+                          : "border-destructive/40 text-destructive"
+                      }
+                    >
+                      Exec:{" "}
+                      {(row.execution_status ?? (row.execution_error ? "error" : "success")) ===
+                      "success"
+                        ? "Success"
+                        : "Error"}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={
+                        (row.output_matched ?? row.verdict === "accepted")
+                          ? "border-success/40 text-success"
+                          : "border-destructive/40 text-destructive"
+                      }
+                    >
+                      Output: {(row.output_matched ?? row.verdict === "accepted") ? "Match" : "No match"}
+                    </Badge>
+                    <Badge
                       className={
                         row.verdict === "accepted"
                           ? "bg-success/15 text-success"
@@ -140,6 +183,24 @@ function HistoryPage() {
                     >
                       {row.verdict === "accepted" ? "Accepted" : "Rejected"}
                     </Badge>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Expected output
+                    </p>
+                    <pre className="mt-1 max-h-24 overflow-auto rounded-lg bg-secondary/40 p-2 font-mono text-xs">
+                      {row.expected_output?.trim() || "(not provided)"}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Actual output
+                    </p>
+                    <pre className="mt-1 max-h-24 overflow-auto rounded-lg bg-secondary/40 p-2 font-mono text-xs">
+                      {row.execution_error?.trim() || row.execution_output?.trim() || "(no output)"}
+                    </pre>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-3">

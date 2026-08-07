@@ -79,6 +79,12 @@ function ValidatorPage() {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [reviewedCode, setReviewedCode] = useState("");
   const [reviewedLanguage, setReviewedLanguage] = useState<Language>("python");
+  const [reviewedMeta, setReviewedMeta] = useState<{
+    employeeName: string;
+    employeeCode: string;
+    department: string;
+    question: string;
+  } | null>(null);
 
   const switchLanguage = (next: Language) => {
     setLanguage(next);
@@ -115,11 +121,17 @@ function ValidatorPage() {
       setReport(result);
       setReviewedCode(code);
       setReviewedLanguage(language);
+      setReviewedMeta({
+        employeeName: employeeName.trim(),
+        employeeCode: employeeCode.trim(),
+        department,
+        question: question.trim(),
+      });
       void queryClient.invalidateQueries({ queryKey: ["submissions"] });
       toast.success(
         result.verdict === "accepted"
-          ? `Accepted — score ${result.scores.overall}/100`
-          : `Rejected — score ${result.scores.overall}/100`,
+          ? "Accepted — code executed and output matched exactly"
+          : `Rejected — ${result.outputMatch?.reason ?? "output did not match"}`,
       );
     },
     onError: (error: unknown) => {
@@ -315,6 +327,9 @@ function ValidatorPage() {
             report={report}
             language={reviewedLanguage}
             submittedCode={reviewedCode}
+            {...(reviewedMeta
+              ? { meta: { ...reviewedMeta, language: reviewedLanguage, code: reviewedCode } }
+              : {})}
           />
           <div className="flex justify-end">
             <Button variant="outline" onClick={() => navigate({ to: "/history" })}>

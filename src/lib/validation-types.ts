@@ -4,6 +4,8 @@ export type Verdict = "accepted" | "rejected";
 
 export type Difficulty = "Easy" | "Medium" | "Hard" | "Expert";
 
+export type ExecutionStatus = "success" | "error";
+
 export type Severity = "critical" | "warning" | "info";
 
 export interface CodeIssue {
@@ -16,7 +18,17 @@ export interface CodeIssue {
 }
 
 export interface ValidationReport {
+  /** Final acceptance: execution success + exact expected-output match only. */
   verdict: Verdict;
+  /** Informational AI opinion. Never affects acceptance. */
+  aiVerdict: Verdict;
+  executionStatus: ExecutionStatus;
+  outputMatch: {
+    matched: boolean;
+    expected: string | null;
+    actual: string;
+    reason: string;
+  };
   summary: string;
   problemType: string[];
   questionUnderstanding: string;
@@ -83,16 +95,7 @@ export interface ValidationInput {
   department: string;
 }
 
-export const DEPARTMENTS = [
-  "Engineering",
-  "Data Engineering",
-  "Data Science",
-  "Backend",
-  "Frontend",
-  "QA",
-  "DevOps",
-  "Analytics",
-] as const;
+export const DEPARTMENTS = ["Cognitive Tech", "Data Engineer", "DCG"] as const;
 
 export const DIFFICULTIES: Difficulty[] = ["Easy", "Medium", "Hard", "Expert"];
 

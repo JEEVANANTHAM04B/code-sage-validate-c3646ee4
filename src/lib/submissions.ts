@@ -27,6 +27,9 @@ export interface SubmissionRow {
   problem_type: string[];
   execution_output: string | null;
   execution_error: string | null;
+  execution_status: "success" | "error";
+  output_matched: boolean;
+  output_match_reason: string | null;
   reviewer_notes: string | null;
   report: ValidationReport;
   created_at: string;
@@ -86,6 +89,9 @@ export async function insertSubmission(payload: {
       problem_type: report.problemType,
       execution_output: report.execution.output,
       execution_error: report.execution.error,
+      execution_status: report.executionStatus,
+      output_matched: report.outputMatch.matched,
+      output_match_reason: report.outputMatch.reason,
       report: JSON.parse(JSON.stringify(report)),
     })
     .select("id")

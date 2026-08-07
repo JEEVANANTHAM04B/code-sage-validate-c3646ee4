@@ -27,12 +27,15 @@ export type Database = {
           employee_name: string
           execution_error: string | null
           execution_output: string | null
+          execution_status: string
           execution_time_ms: number
           expected_output: string | null
           id: string
           language: string
           logic_score: number
+          output_match_reason: string | null
           output_match_score: number
+          output_matched: boolean
           overall_score: number
           problem_type: string[]
           quality_score: number
@@ -57,12 +60,15 @@ export type Database = {
           employee_name: string
           execution_error?: string | null
           execution_output?: string | null
+          execution_status?: string
           execution_time_ms?: number
           expected_output?: string | null
           id?: string
           language: string
           logic_score?: number
+          output_match_reason?: string | null
           output_match_score?: number
+          output_matched?: boolean
           overall_score?: number
           problem_type?: string[]
           quality_score?: number
@@ -87,12 +93,15 @@ export type Database = {
           employee_name?: string
           execution_error?: string | null
           execution_output?: string | null
+          execution_status?: string
           execution_time_ms?: number
           expected_output?: string | null
           id?: string
           language?: string
           logic_score?: number
+          output_match_reason?: string | null
           output_match_score?: number
+          output_matched?: boolean
           overall_score?: number
           problem_type?: string[]
           quality_score?: number

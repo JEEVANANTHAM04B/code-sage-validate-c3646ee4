@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeToggle, themeInitScript } from "@/components/theme-toggle";
 
 function NotFoundComponent() {
   return (
@@ -109,11 +110,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {children}
         <Scripts />
       </body>
@@ -135,6 +137,9 @@ function RootComponent() {
               <span className="text-sm font-medium text-muted-foreground">
                 AI code validation console
               </span>
+              <div className="ml-auto">
+                <ThemeToggle />
+              </div>
             </header>
             <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
               {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

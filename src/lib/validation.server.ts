@@ -246,6 +246,7 @@ export async function runValidationEngine(input: ValidationInputPayload): Promis
   if (!apiKey) {
     insights = emptyInsights("AI insights are unavailable because AI is not configured for this project.");
   } else {
+    let streamError: unknown = null;
     try {
       const provider = createLovableResponsesProvider(apiKey);
       const result = streamText({
@@ -259,6 +260,7 @@ export async function runValidationEngine(input: ValidationInputPayload): Promis
           },
         },
         onError: ({ error }) => {
+          streamError = error;
           console.error("[validation] AI stream error", error);
         },
       });
@@ -266,10 +268,15 @@ export async function runValidationEngine(input: ValidationInputPayload): Promis
       const text = await result.text;
       insights = text.trim()
         ? normalize(extractJson(text))
-        : emptyInsights("AI insights could not be generated for this submission.");
+        : emptyInsights(
+            streamError
+              ? describeAiError(streamError)
+              : "AI insights could not be generated for this submission.",
+          );
     } catch (error) {
       console.error("[validation] AI insights failed", error);
-      insights = emptyInsights(describeAiError(error));
+      insights = emptyInsights(describeAiError(streamError ?? error));
+
     }
   }
 

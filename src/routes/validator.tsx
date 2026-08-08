@@ -92,8 +92,15 @@ function ValidatorPage() {
     if (untouched) setCode(next === "python" ? PYTHON_STARTER : SQL_STARTER);
   };
 
+  const [stage, setStage] = useState<"idle" | "executing" | "reviewing">("idle");
+
   const mutation = useMutation({
     mutationFn: async () => {
+      setStage("executing");
+      const { executeSubmission } = await import("@/lib/code-execution");
+      const execution = await executeSubmission(language, code);
+
+      setStage("reviewing");
       const result = await validate({
         data: {
           question: question.trim(),
@@ -103,6 +110,7 @@ function ValidatorPage() {
           employeeName: employeeName.trim(),
           employeeCode: employeeCode.trim(),
           department,
+          execution,
         },
       });
       await insertSubmission({
@@ -117,6 +125,8 @@ function ValidatorPage() {
       });
       return result;
     },
+    onSettled: () => setStage("idle"),
+
     onSuccess: (result) => {
       setReport(result);
       setReviewedCode(code);
@@ -316,8 +326,10 @@ function ValidatorPage() {
       {mutation.isPending && (
         <div className="panel flex items-center gap-3 p-6 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin text-primary" />
-          The AI reviewer is analysing the question, tracing execution and scoring the submission. This can
-          take up to a minute.
+          {stage === "executing"
+            ? "Executing your code in the sandbox and capturing the output…"
+            : "Code executed. The AI reviewer is now generating informational insights."}
+
         </div>
       )}
 

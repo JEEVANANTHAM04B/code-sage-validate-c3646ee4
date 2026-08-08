@@ -1,7 +1,11 @@
 import { streamText } from "ai";
 
 import { createLovableResponsesProvider } from "./ai-gateway.server";
-import type { CodeIssue, Difficulty, ValidationInput, ValidationReport } from "./validation-types";
+import type { ExecutionResult } from "./code-execution";
+import type { ValidationInputPayload } from "./validation-schema";
+import type { CodeIssue, Difficulty, ValidationReport } from "./validation-types";
+
+
 
 const MODEL_ID = "openai/gpt-5.6-sol";
 
@@ -43,17 +47,20 @@ Return ONLY a single JSON object (no markdown fences, no prose) with exactly thi
 }
 Code strings must be plain source code (real newlines, no markdown fences). Keep every list to at most 6 items. When the submission is correct, whatIsWrong and howToFix may be empty arrays.`;
 
-function buildUserPrompt(input: ValidationInput) {
+function buildUserPrompt(input: ValidationInputPayload, run: ExecutionResult) {
   const expected = input.expectedOutput?.trim();
   return [
     `LANGUAGE: ${input.language.toUpperCase()}`,
     `QUESTION:\n${input.question.trim()}`,
     expected ? `EXPECTED OUTPUT (authoritative):\n${expected}` : `EXPECTED OUTPUT: not provided — infer from the question.`,
     `SUBMITTED CODE:\n${input.code}`,
+    `REAL SANDBOX EXECUTION RESULT (authoritative, already performed by the platform):\nstatus: ${run.status}\nstdout:\n${run.output || "(empty)"}\nstderr:\n${run.error ?? "(none)"}`,
+    `Use the real execution result above for execution.output and execution.error verbatim. Do not simulate execution.`,
     `Reviewer context: submission by ${input.employeeName} (${input.employeeCode}), ${input.department}.`,
     `Respond with the JSON object only.`,
   ].join("\n\n");
 }
+
 
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
@@ -212,45 +219,72 @@ function describeAiError(error: unknown): string {
   if (status === 429) {
     return "The AI reviewer is rate limited right now. Please wait a moment and validate again.";
   }
+  if (/no output generated/i.test(detail)) {
+    return "AI insights are unavailable right now (the reviewer returned no content). Validation still ran on the real execution output.";
+  }
   if (detail.trim()) return `The AI reviewer failed: ${detail}`;
-  return "The AI reviewer failed to return a response. Please retry.";
+  return "AI insights are unavailable right now. Validation still ran on the real execution output.";
 }
 
-export async function runValidationEngine(input: ValidationInput): Promise<ValidationReport> {
+
+function emptyInsights(summary: string): ValidationReport {
+  return normalize({ summary, verdict: "rejected" });
+}
+
+export async function runValidationEngine(input: ValidationInputPayload): Promise<ValidationReport> {
+  // 1. The real execution result (captured in the sandbox) decides the verdict on its own.
+  const run: ExecutionResult =
+    input.execution ?? {
+      status: "error",
+      output: "",
+      error: "The code was not executed, so the output could not be captured.",
+      timeMs: 0,
+      note: "Execution result missing.",
+    };
+
+
+  // 2. AI insights are informational only and must never block validation.
+  let insights: ValidationReport;
   const apiKey = process.env['LOVABLE_API_KEY'];
-  if (!apiKey) throw new Error("AI is not configured for this project.");
 
-  const provider = createLovableResponsesProvider(apiKey);
-
-  let text: string;
-  try {
-    const result = streamText({
-      model: provider.responses(MODEL_ID),
-      system: SYSTEM_PROMPT,
-      prompt: buildUserPrompt(input),
-      providerOptions: {
-        openai: {
-          forceReasoning: true,
-          reasoningEffort: "medium",
-          reasoningSummary: "auto",
-          store: false,
-          include: ["reasoning.encrypted_content"],
+  if (!apiKey) {
+    insights = emptyInsights("AI insights are unavailable because AI is not configured for this project.");
+  } else {
+    let streamError: unknown = null;
+    try {
+      const provider = createLovableResponsesProvider(apiKey);
+      const result = streamText({
+        model: provider.responses(MODEL_ID),
+        system: SYSTEM_PROMPT,
+        prompt: buildUserPrompt(input, run),
+        providerOptions: {
+          openai: {
+            reasoningEffort: "low",
+            store: false,
+          },
         },
-      },
-      onError: ({ error }) => {
-        console.error("[validation] AI stream error", error);
-      },
-    });
+        onError: ({ error }) => {
+          streamError = error;
+          console.error("[validation] AI stream error", error);
+        },
+      });
 
-    text = await result.text;
-  } catch (error) {
-    console.error("[validation] AI call failed", error);
-    throw new Error(describeAiError(error));
+      const text = await result.text;
+      insights = text.trim()
+        ? normalize(extractJson(text))
+        : emptyInsights(
+            streamError
+              ? describeAiError(streamError)
+              : "AI insights could not be generated for this submission.",
+          );
+    } catch (error) {
+      console.error("[validation] AI insights failed", error);
+      insights = emptyInsights(describeAiError(streamError ?? error));
+
+    }
   }
 
-  if (!text.trim()) throw new Error("The AI reviewer returned an empty response. Please retry.");
-
-  return applyAcceptanceRules(normalize(extractJson(text)), input);
+  return applyAcceptanceRules(insights, input, run);
 }
 
 
@@ -270,10 +304,14 @@ function canonicalOutput(value: string) {
  * 2. the produced output matching the expected output exactly.
  * All AI scores/insights stay informational.
  */
-function applyAcceptanceRules(report: ValidationReport, input: ValidationInput): ValidationReport {
-  const executionStatus = report.execution.error ? "error" : "success";
+function applyAcceptanceRules(
+  report: ValidationReport,
+  input: ValidationInputPayload,
+  run: ExecutionResult,
+): ValidationReport {
+  const executionStatus = run.status;
   const expectedRaw = input.expectedOutput?.trim() ? input.expectedOutput : null;
-  const actual = report.execution.output ?? "";
+  const actual = run.output;
 
   let matched = false;
   let reason: string;
@@ -281,7 +319,6 @@ function applyAcceptanceRules(report: ValidationReport, input: ValidationInput):
   if (executionStatus === "error") {
     reason = "Code failed to execute, so the output could not be compared.";
   } else if (!expectedRaw) {
-    matched = false;
     reason = "No expected output was provided, so an exact match could not be verified.";
   } else {
     matched = canonicalOutput(actual) === canonicalOutput(expectedRaw);
@@ -297,6 +334,14 @@ function applyAcceptanceRules(report: ValidationReport, input: ValidationInput):
     verdict,
     executionStatus,
     outputMatch: { matched, expected: expectedRaw, actual, reason },
+    execution: {
+      ...report.execution,
+      output: actual,
+      error: run.error,
+      estimatedTimeMs: run.timeMs,
+      note: run.note,
+    },
     scores: { ...report.scores, outputMatch: matched ? 100 : 0 },
   };
 }
+

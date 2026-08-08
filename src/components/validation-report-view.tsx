@@ -140,7 +140,13 @@ export function ValidationReportView({
   const executionOk = (report.executionStatus ?? (report.execution.error ? "error" : "success")) === "success";
   const matched = report.outputMatch?.matched ?? accepted;
   const expectedOutput = report.outputMatch?.expected ?? null;
-  const actualOutput = report.outputMatch?.actual || report.execution.output || "(no output)";
+  const actualOutput =
+    report.outputMatch?.actual ||
+    report.execution.output ||
+    (executionOk
+      ? "Program executed successfully but produced no output."
+      : report.execution.error || "(no output)");
+
   const matchReason = report.outputMatch?.reason ?? "";
   const [exporting, setExporting] = useState<"pdf" | "docx" | null>(null);
 
@@ -277,7 +283,7 @@ export function ValidationReportView({
           icon={Clock}
           label="Execution time"
           value={`${report.execution.estimatedTimeMs} ms`}
-          hint="AI-estimated"
+          hint="Measured in sandbox"
         />
         <MetricCard
           icon={Cpu}
@@ -285,6 +291,7 @@ export function ValidationReportView({
           value={`${report.execution.estimatedMemoryKb} KB`}
           hint="AI-estimated"
         />
+
         <MetricCard icon={Gauge} label="Time complexity" value={report.complexity.time} />
         <MetricCard icon={Boxes} label="Space complexity" value={report.complexity.space} />
       </div>

@@ -283,7 +283,7 @@ export function ValidationReportView({
           icon={Clock}
           label="Execution time"
           value={`${report.execution.estimatedTimeMs} ms`}
-          hint="AI-estimated"
+          hint="Measured in sandbox"
         />
         <MetricCard
           icon={Cpu}
@@ -291,6 +291,7 @@ export function ValidationReportView({
           value={`${report.execution.estimatedMemoryKb} KB`}
           hint="AI-estimated"
         />
+
         <MetricCard icon={Gauge} label="Time complexity" value={report.complexity.time} />
         <MetricCard icon={Boxes} label="Space complexity" value={report.complexity.space} />
       </div>

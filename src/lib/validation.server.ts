@@ -216,41 +216,49 @@ function describeAiError(error: unknown): string {
   return "The AI reviewer failed to return a response. Please retry.";
 }
 
+function emptyInsights(summary: string): ValidationReport {
+  return normalize({ summary, verdict: "rejected" });
+}
+
 export async function runValidationEngine(input: ValidationInput): Promise<ValidationReport> {
+  // 1. Real execution decides the verdict. It must always run, even if AI is unavailable.
+  const run = await executeCode(input.language, input.code);
+
+  // 2. AI insights are informational only and must never block validation.
+  let insights: ValidationReport;
   const apiKey = process.env['LOVABLE_API_KEY'];
-  if (!apiKey) throw new Error("AI is not configured for this project.");
 
-  const provider = createLovableResponsesProvider(apiKey);
-
-  let text: string;
-  try {
-    const result = streamText({
-      model: provider.responses(MODEL_ID),
-      system: SYSTEM_PROMPT,
-      prompt: buildUserPrompt(input),
-      providerOptions: {
-        openai: {
-          forceReasoning: true,
-          reasoningEffort: "medium",
-          reasoningSummary: "auto",
-          store: false,
-          include: ["reasoning.encrypted_content"],
+  if (!apiKey) {
+    insights = emptyInsights("AI insights are unavailable because AI is not configured for this project.");
+  } else {
+    try {
+      const provider = createLovableResponsesProvider(apiKey);
+      const result = streamText({
+        model: provider.responses(MODEL_ID),
+        system: SYSTEM_PROMPT,
+        prompt: buildUserPrompt(input, run),
+        providerOptions: {
+          openai: {
+            reasoningEffort: "low",
+            store: false,
+          },
         },
-      },
-      onError: ({ error }) => {
-        console.error("[validation] AI stream error", error);
-      },
-    });
+        onError: ({ error }) => {
+          console.error("[validation] AI stream error", error);
+        },
+      });
 
-    text = await result.text;
-  } catch (error) {
-    console.error("[validation] AI call failed", error);
-    throw new Error(describeAiError(error));
+      const text = await result.text;
+      insights = text.trim()
+        ? normalize(extractJson(text))
+        : emptyInsights("AI insights could not be generated for this submission.");
+    } catch (error) {
+      console.error("[validation] AI insights failed", error);
+      insights = emptyInsights(describeAiError(error));
+    }
   }
 
-  if (!text.trim()) throw new Error("The AI reviewer returned an empty response. Please retry.");
-
-  return applyAcceptanceRules(normalize(extractJson(text)), input);
+  return applyAcceptanceRules(insights, input, run);
 }
 
 
@@ -270,10 +278,14 @@ function canonicalOutput(value: string) {
  * 2. the produced output matching the expected output exactly.
  * All AI scores/insights stay informational.
  */
-function applyAcceptanceRules(report: ValidationReport, input: ValidationInput): ValidationReport {
-  const executionStatus = report.execution.error ? "error" : "success";
+function applyAcceptanceRules(
+  report: ValidationReport,
+  input: ValidationInput,
+  run: ExecutionResult,
+): ValidationReport {
+  const executionStatus = run.status;
   const expectedRaw = input.expectedOutput?.trim() ? input.expectedOutput : null;
-  const actual = report.execution.output ?? "";
+  const actual = run.output;
 
   let matched = false;
   let reason: string;
@@ -281,7 +293,6 @@ function applyAcceptanceRules(report: ValidationReport, input: ValidationInput):
   if (executionStatus === "error") {
     reason = "Code failed to execute, so the output could not be compared.";
   } else if (!expectedRaw) {
-    matched = false;
     reason = "No expected output was provided, so an exact match could not be verified.";
   } else {
     matched = canonicalOutput(actual) === canonicalOutput(expectedRaw);
@@ -297,6 +308,14 @@ function applyAcceptanceRules(report: ValidationReport, input: ValidationInput):
     verdict,
     executionStatus,
     outputMatch: { matched, expected: expectedRaw, actual, reason },
+    execution: {
+      ...report.execution,
+      output: actual,
+      error: run.error,
+      estimatedTimeMs: run.timeMs,
+      note: run.note,
+    },
     scores: { ...report.scores, outputMatch: matched ? 100 : 0 },
   };
 }
+

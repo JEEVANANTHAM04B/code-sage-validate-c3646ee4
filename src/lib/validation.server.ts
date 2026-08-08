@@ -225,9 +225,17 @@ function emptyInsights(summary: string): ValidationReport {
   return normalize({ summary, verdict: "rejected" });
 }
 
-export async function runValidationEngine(input: ValidationInput): Promise<ValidationReport> {
-  // 1. Real execution decides the verdict. It must always run, even if AI is unavailable.
-  const run = await executeCode(input.language, input.code);
+export async function runValidationEngine(input: ValidationInputPayload): Promise<ValidationReport> {
+  // 1. The real execution result (captured in the sandbox) decides the verdict on its own.
+  const run: ExecutionResult =
+    input.execution ?? {
+      status: "error",
+      output: "",
+      error: "The code was not executed, so the output could not be captured.",
+      timeMs: 0,
+      note: "Execution result missing.",
+    };
+
 
   // 2. AI insights are informational only and must never block validation.
   let insights: ValidationReport;

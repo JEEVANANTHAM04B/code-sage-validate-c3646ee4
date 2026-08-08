@@ -326,8 +326,10 @@ function ValidatorPage() {
       {mutation.isPending && (
         <div className="panel flex items-center gap-3 p-6 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin text-primary" />
-          The AI reviewer is analysing the question, tracing execution and scoring the submission. This can
-          take up to a minute.
+          {stage === "executing"
+            ? "Executing your code in the sandbox and capturing the output…"
+            : "Code executed. The AI reviewer is now generating informational insights."}
+
         </div>
       )}
 

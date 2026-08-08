@@ -47,7 +47,7 @@ Return ONLY a single JSON object (no markdown fences, no prose) with exactly thi
 }
 Code strings must be plain source code (real newlines, no markdown fences). Keep every list to at most 6 items. When the submission is correct, whatIsWrong and howToFix may be empty arrays.`;
 
-function buildUserPrompt(input: ValidationInput, run: ExecutionResult) {
+function buildUserPrompt(input: ValidationInputPayload, run: ExecutionResult) {
   const expected = input.expectedOutput?.trim();
   return [
     `LANGUAGE: ${input.language.toUpperCase()}`,
@@ -295,7 +295,7 @@ function canonicalOutput(value: string) {
  */
 function applyAcceptanceRules(
   report: ValidationReport,
-  input: ValidationInput,
+  input: ValidationInputPayload,
   run: ExecutionResult,
 ): ValidationReport {
   const executionStatus = run.status;

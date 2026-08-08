@@ -179,32 +179,80 @@ function normalize(raw: unknown): ValidationReport {
   };
 }
 
+/** Turns an AI Gateway/SDK failure into a message that is useful in the UI. */
+function describeAiError(error: unknown): string {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  let status: number | undefined;
+  let detail = "";
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const record = current as Record<string, unknown>;
+    const code = record['statusCode'] ?? record['status'];
+    if (typeof code === "number" && !status) status = code;
+
+    const body = record['responseBody'] ?? record['data'] ?? record['message'];
+    if (typeof body === "string" && body.trim() && !detail) {
+      try {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        if (typeof parsed['status'] === "number" && !status) status = parsed['status'];
+        const message = parsed['message'] ?? parsed['title'];
+        if (typeof message === "string") detail = message;
+      } catch {
+        detail = body;
+      }
+    }
+    current = record['cause'] ?? record['error'];
+  }
+
+  if (status === 402 || /not enough credits/i.test(detail)) {
+    return "AI credits for this workspace are exhausted, so the reviewer could not run. Add credits in Lovable (Settings → Plans & Billing) and validate again.";
+  }
+  if (status === 429) {
+    return "The AI reviewer is rate limited right now. Please wait a moment and validate again.";
+  }
+  if (detail.trim()) return `The AI reviewer failed: ${detail}`;
+  return "The AI reviewer failed to return a response. Please retry.";
+}
+
 export async function runValidationEngine(input: ValidationInput): Promise<ValidationReport> {
   const apiKey = process.env['LOVABLE_API_KEY'];
   if (!apiKey) throw new Error("AI is not configured for this project.");
 
   const provider = createLovableResponsesProvider(apiKey);
 
-  const result = streamText({
-    model: provider.responses(MODEL_ID),
-    system: SYSTEM_PROMPT,
-    prompt: buildUserPrompt(input),
-    providerOptions: {
-      openai: {
-        forceReasoning: true,
-        reasoningEffort: "medium",
-        reasoningSummary: "auto",
-        store: false,
-        include: ["reasoning.encrypted_content"],
+  let text: string;
+  try {
+    const result = streamText({
+      model: provider.responses(MODEL_ID),
+      system: SYSTEM_PROMPT,
+      prompt: buildUserPrompt(input),
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          reasoningEffort: "medium",
+          reasoningSummary: "auto",
+          store: false,
+          include: ["reasoning.encrypted_content"],
+        },
       },
-    },
-  });
+      onError: ({ error }) => {
+        console.error("[validation] AI stream error", error);
+      },
+    });
 
-  const text = await result.text;
+    text = await result.text;
+  } catch (error) {
+    console.error("[validation] AI call failed", error);
+    throw new Error(describeAiError(error));
+  }
+
   if (!text.trim()) throw new Error("The AI reviewer returned an empty response. Please retry.");
 
   return applyAcceptanceRules(normalize(extractJson(text)), input);
 }
+
 
 /** Canonical form for exact-output comparison: normalized newlines, no trailing spaces, trimmed. */
 function canonicalOutput(value: string) {

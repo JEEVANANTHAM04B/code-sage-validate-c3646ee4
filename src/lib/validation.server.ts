@@ -219,9 +219,13 @@ function describeAiError(error: unknown): string {
   if (status === 429) {
     return "The AI reviewer is rate limited right now. Please wait a moment and validate again.";
   }
+  if (/no output generated/i.test(detail)) {
+    return "AI insights are unavailable right now (the reviewer returned no content). Validation still ran on the real execution output.";
+  }
   if (detail.trim()) return `The AI reviewer failed: ${detail}`;
-  return "The AI reviewer failed to return a response. Please retry.";
+  return "AI insights are unavailable right now. Validation still ran on the real execution output.";
 }
+
 
 function emptyInsights(summary: string): ValidationReport {
   return normalize({ summary, verdict: "rejected" });

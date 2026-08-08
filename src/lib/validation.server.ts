@@ -1,7 +1,9 @@
 import { streamText } from "ai";
 
 import { createLovableResponsesProvider } from "./ai-gateway.server";
+import { executeCode, type ExecutionResult } from "./execution.server";
 import type { CodeIssue, Difficulty, ValidationInput, ValidationReport } from "./validation-types";
+
 
 const MODEL_ID = "openai/gpt-5.6-sol";
 

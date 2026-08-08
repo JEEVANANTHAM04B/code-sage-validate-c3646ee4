@@ -45,17 +45,20 @@ Return ONLY a single JSON object (no markdown fences, no prose) with exactly thi
 }
 Code strings must be plain source code (real newlines, no markdown fences). Keep every list to at most 6 items. When the submission is correct, whatIsWrong and howToFix may be empty arrays.`;
 
-function buildUserPrompt(input: ValidationInput) {
+function buildUserPrompt(input: ValidationInput, run: ExecutionResult) {
   const expected = input.expectedOutput?.trim();
   return [
     `LANGUAGE: ${input.language.toUpperCase()}`,
     `QUESTION:\n${input.question.trim()}`,
     expected ? `EXPECTED OUTPUT (authoritative):\n${expected}` : `EXPECTED OUTPUT: not provided — infer from the question.`,
     `SUBMITTED CODE:\n${input.code}`,
+    `REAL SANDBOX EXECUTION RESULT (authoritative, already performed by the platform):\nstatus: ${run.status}\nstdout:\n${run.output || "(empty)"}\nstderr:\n${run.error ?? "(none)"}`,
+    `Use the real execution result above for execution.output and execution.error verbatim. Do not simulate execution.`,
     `Reviewer context: submission by ${input.employeeName} (${input.employeeCode}), ${input.department}.`,
     `Respond with the JSON object only.`,
   ].join("\n\n");
 }
+
 
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();

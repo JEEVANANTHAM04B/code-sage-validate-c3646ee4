@@ -140,7 +140,13 @@ export function ValidationReportView({
   const executionOk = (report.executionStatus ?? (report.execution.error ? "error" : "success")) === "success";
   const matched = report.outputMatch?.matched ?? accepted;
   const expectedOutput = report.outputMatch?.expected ?? null;
-  const actualOutput = report.outputMatch?.actual || report.execution.output || "(no output)";
+  const actualOutput =
+    report.outputMatch?.actual ||
+    report.execution.output ||
+    (executionOk
+      ? "Program executed successfully but produced no output."
+      : report.execution.error || "(no output)");
+
   const matchReason = report.outputMatch?.reason ?? "";
   const [exporting, setExporting] = useState<"pdf" | "docx" | null>(null);
 
